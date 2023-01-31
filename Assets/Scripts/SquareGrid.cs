@@ -14,7 +14,15 @@ public class SquareGrid : MonoBehaviour
     Position tilePrefab;
 
     [SerializeField]
-    float gridSpacing = 1.05f;
+    float _gridSpacing = 1.05f;
+
+    public float gridSpacing
+    {
+        get
+        {
+            return _gridSpacing;
+        }
+    }
 
     [SerializeField]
     Material[] materials;
