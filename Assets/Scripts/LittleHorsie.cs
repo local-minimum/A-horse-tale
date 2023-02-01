@@ -1,5 +1,5 @@
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public class LittleHorsie : MonoBehaviour
@@ -30,14 +30,36 @@ public class LittleHorsie : MonoBehaviour
     private Material disabledMat;
 
     private Renderer render;
-    private JumpPlanner planner;
 
+    [SerializeField]
+    private JumpPlanner plannerPrefab;
+
+    private List<JumpPlanner> planners = new List<JumpPlanner>();
 
     private void Start()
     {
-        planner = GetComponentInChildren<JumpPlanner>();
         render = GetComponent<Renderer>();
         state = State.Idle;
+
+        InitiatePlanners();
+    }
+
+    void InitiatePlanners()
+    {
+        JumpPlanner previousPlanner = null;
+
+        for (int i = 0; i<age; i++)
+        {
+            var currentPlanner = Instantiate(plannerPrefab);
+            currentPlanner.parentPlanner = previousPlanner;
+            currentPlanner.transform.SetParent(transform);
+            currentPlanner.transform.localPosition = Vector3.zero;
+            currentPlanner.name = $"Planner {i + 1}";
+
+            planners.Add(currentPlanner);
+
+            previousPlanner = currentPlanner;
+        }
     }
 
     private State _state = State.Idle;
@@ -102,33 +124,76 @@ public class LittleHorsie : MonoBehaviour
     {
         if (state == State.Selected)
         {
+            planners[activePlanner].awaitingPlan = true;
             state = State.Planning;
         }
     }
 
-    private void OnMouseUp()
-    {
-        if (state == State.Planning)
-        {
-            if (planner.FullPlan)
-            {
-                state = State.Ready;
-            } else
-            {
-                state = mouseOver ? State.Selected : State.Idle;
-            }            
-        }
-    }
+    private int activePlanner = 0;
+    private bool jumping = false;
 
     private void Update()
     {
         if (state == State.Ready && Input.anyKeyDown)
         {
+            activePlanner = 0;
             state = State.Acting;
-            var jumps = planner.Jumps;
-            planner.ClearPlan();
-            StartCoroutine(Jump(jumps));
+            StartJumping();
+
+        } else if (state == State.Acting && !jumping)
+        {
+            activePlanner++;
+            if (activePlanner >= planners.Count)
+            {
+                state = mouseOver ? State.Selected : State.Idle;
+                activePlanner = 0;
+            } else
+            {
+                StartJumping();
+            }
+        } else if (state == State.Planning)
+        {
+            var currentPlanner = planners[activePlanner];
+
+            if (Input.GetMouseButtonUp(0))
+            {
+                if (currentPlanner.FullPlan)
+                {
+                    currentPlanner.awaitingPlan = false;
+
+                    activePlanner++;
+
+                    if (activePlanner >= planners.Count)
+                    {
+                        state = State.Ready;
+                    }
+                } else if (activePlanner == 0)
+                {
+                    currentPlanner.ClearPlan();
+                    state = mouseOver ? State.Selected : State.Idle;
+                } else
+                {
+                    currentPlanner.ClearPlan();
+                }
+            }
+            else if (Input.GetMouseButtonDown(0))
+            {
+                currentPlanner.awaitingPlan = true;
+            }
         }
+    }
+
+    void StartJumping()
+    {
+        var jumps = planners[activePlanner].Jumps;
+        planners[activePlanner].ClearPlan();
+
+        for (int i = activePlanner + 1, l = planners.Count; i < l; i++)
+        {
+            planners[i].HidePlan();
+        }
+
+        StartCoroutine(Jump(jumps));
     }
 
     [SerializeField, Range(0.2f, 2f)]
@@ -142,6 +207,7 @@ public class LittleHorsie : MonoBehaviour
 
     IEnumerator<WaitForSeconds> Jump(List<Vector3> jumps)
     {
+        jumping = true;
         foreach (var jump in jumps)
         {
             float t0 = Time.timeSinceLevelLoad;
@@ -161,6 +227,7 @@ public class LittleHorsie : MonoBehaviour
             }
             yield return new WaitForSeconds(betweenJump);
         }
-        state = mouseOver ? State.Selected : State.Idle;
+
+        jumping = false;
     }
 }
